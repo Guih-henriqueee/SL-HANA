@@ -1,4 +1,5 @@
 import requests
+import httpx
 import urllib3
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -24,24 +25,64 @@ class SLConnection:
         
         response = requests.post(url, json=payload, headers=headers, timeout=self._TIMEOUT, verify=False)
 
-        if response.status_code == 200:
-            print("Token obtido com sucesso.")
-            print(response.json()["SessionId"])
-            return response.json()["SessionId"]
+        if response.ok:
+            self._COOKIES = response.cookies
+            
+            self._SESSION_ID = response.cookies.get("B1SESSION")
+            self._ROUTEID = response.cookies.get("ROUTEID")
+            
+           
+            return self._SESSION_ID, self._ROUTEID
         else:
             raise Exception(f"Falha ao obter token. Status code: {response.status_code}, Response: {response.text}")
         
         
-    def logout(self, SESSION_ID):
-        print(f"Session to logout:", SESSION_ID)
+    async def logout(self):
         url = f"{self._SR_BASE_URL}/Logout"
         headers = {
-            "B1SESSION": SESSION_ID
+            "B1SESSION": self._SESSION_ID
         }
-        response = requests.post(url, headers=headers, verify=False)
+        cookies = {
+            "B1SESSION": self._SESSION_ID,
+            "ROUTEID": self._ROUTEID
+        }
+
+        async with httpx.AsyncClient(timeout=self._TIMEOUT, verify=False) as client:
+            response = await client.post(url, headers=headers, cookies=cookies)
+
         if response.status_code == 200:
             print("Logout bem-sucedido.")
         else:
             raise Exception(f"Falha ao fazer logout. Status code: {response.status_code}, Response: {response.text}")
 
 
+
+    async def requests(self, url, method, headers=None, payload=None):
+        url = f"{self._SR_BASE_URL}{url}"
+        print(f"URL: {url}")
+
+        default_headers = {
+            "Content-Type": "application/json",
+
+        }
+
+        if headers:
+            default_headers.update(headers)
+
+        cookies = {
+            "B1SESSION": self._SESSION_ID,
+            "ROUTEID": self._ROUTEID
+        }
+
+        async with httpx.AsyncClient(timeout=self._TIMEOUT, verify=False) as client:
+            response = await client.request(
+                method=method,
+                url=url,
+                headers=default_headers,
+                json=payload,
+                cookies=cookies
+            )
+
+
+        print(response.status_code, response.text)
+        return response
